@@ -8,7 +8,7 @@ from app.models.user import UserModel
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-class UserCRUD:
+class UserService:
     def __init__(self, database: AsyncIOMotorDatabase):
         self.db = database
         self.collection = database.users
@@ -21,6 +21,10 @@ class UserCRUD:
     @staticmethod
     def get_password_hash(password: str) -> str:
         """Hash a password"""
+        # bcrypt has a 72 byte limit, truncate if necessary
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password = password_bytes[:72].decode('utf-8', errors='ignore')
         return pwd_context.hash(password)
 
     async def get_user_by_id(self, user_id: str) -> Optional[UserModel]:
@@ -98,7 +102,7 @@ class UserCRUD:
             return None
         return user
 
-# Dependency to get user CRUD
-def get_user_crud(database: AsyncIOMotorDatabase) -> UserCRUD:
-    """Get user CRUD instance"""
-    return UserCRUD(database)
+# Dependency to get user service
+def get_user_service(database: AsyncIOMotorDatabase) -> UserService:
+    """Get user service instance"""
+    return UserService(database)

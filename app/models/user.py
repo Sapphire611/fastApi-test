@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_serializer
 from typing import Optional
 from datetime import datetime
 
 class UserModel(BaseModel):
     """MongoDB User Model"""
-    id: Optional[str] = Field(None, alias="_id")
+    id: str = Field(..., alias="_id")
     username: str
     email: EmailStr
     password: str
@@ -13,8 +13,8 @@ class UserModel(BaseModel):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_serializer('createdAt', 'updatedAt')
+    def serialize_datetime(self, dt: datetime, _info):
+        return dt.isoformat()

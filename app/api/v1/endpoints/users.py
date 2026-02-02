@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from app.core.database import get_database
-from app.crud.user import UserCRUD, get_user_crud
+from app.services.user_service import UserService, get_user_service
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserLogin, Token
 
 router = APIRouter()
@@ -9,17 +9,17 @@ router = APIRouter()
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(user: UserCreate, db=Depends(get_database)):
     """Register a new user"""
-    user_crud = get_user_crud(db)
+    user_service = get_user_service(db)
 
     # Check if user already exists
-    existing_user = await user_crud.get_user_by_email(user.email)
+    existing_user = await user_service.get_user_by_email(user.email)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
 
-    existing_username = await user_crud.get_user_by_username(user.username)
+    existing_username = await user_service.get_user_by_username(user.username)
     if existing_username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -27,14 +27,14 @@ async def register_user(user: UserCreate, db=Depends(get_database)):
         )
 
     # Create new user
-    new_user = await user_crud.create_user(user)
-    return UserResponse(**new_user.model_dump())
+    new_user = await user_service.create_user(user)
+    return UserResponse(**new_user.model_dump(by_alias=True))
 
 @router.post("/login", response_model=Token)
 async def login(user_login: UserLogin, db=Depends(get_database)):
     """Login user"""
-    user_crud = get_user_crud(db)
-    user = await user_crud.authenticate_user(user_login.username, user_login.password)
+    user_service = get_user_service(db)
+    user = await user_service.authenticate_user(user_login.username, user_login.password)
 
     if not user:
         raise HTTPException(
@@ -55,29 +55,29 @@ async def login(user_login: UserLogin, db=Depends(get_database)):
 @router.get("/", response_model=List[UserResponse])
 async def get_users(skip: int = 0, limit: int = 100, db=Depends(get_database)):
     """Get all users"""
-    user_crud = get_user_crud(db)
-    users = await user_crud.get_users(skip=skip, limit=limit)
-    return [UserResponse(**user.model_dump()) for user in users]
+    user_service = get_user_service(db)
+    users = await user_service.get_users(skip=skip, limit=limit)
+    return [UserResponse(**user.model_dump(by_alias=True)) for user in users]
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: str, db=Depends(get_database)):
     """Get a user by ID"""
-    user_crud = get_user_crud(db)
-    user = await user_crud.get_user_by_id(user_id)
+    user_service = get_user_service(db)
+    user = await user_service.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    return UserResponse(**user.model_dump())
+    return UserResponse(**user.model_dump(by_alias=True))
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(user_id: str, user: UserUpdate, db=Depends(get_database)):
     """Update a user"""
-    user_crud = get_user_crud(db)
+    user_service = get_user_service(db)
 
     # Check if user exists
-    existing_user = await user_crud.get_user_by_id(user_id)
+    existing_user = await user_service.get_user_by_id(user_id)
     if not existing_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -86,21 +86,21 @@ async def update_user(user_id: str, user: UserUpdate, db=Depends(get_database)):
 
     # Check if email is already taken by another user
     if user.email:
-        email_user = await user_crud.get_user_by_email(user.email)
+        email_user = await user_service.get_user_by_email(user.email)
         if email_user and email_user.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
 
-    updated_user = await user_crud.update_user(user_id, user)
-    return UserResponse(**updated_user.model_dump())
+    updated_user = await user_service.update_user(user_id, user)
+    return UserResponse(**updated_user.model_dump(by_alias=True))
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, db=Depends(get_database)):
     """Delete a user"""
-    user_crud = get_user_crud(db)
-    success = await user_crud.delete_user(user_id)
+    user_service = get_user_service(db)
+    success = await user_service.delete_user(user_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

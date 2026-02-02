@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -28,8 +28,7 @@ class UserInDB(UserBase):
     createdAt: datetime
     updatedAt: datetime
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class UserResponse(BaseModel):
     """Schema for user response (excludes password)"""
@@ -41,8 +40,7 @@ class UserResponse(BaseModel):
     createdAt: datetime
     updatedAt: datetime
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class UserLogin(BaseModel):
     """Schema for user login"""
