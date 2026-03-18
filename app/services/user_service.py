@@ -1,17 +1,18 @@
 from typing import Optional, List
 from datetime import datetime
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from passlib.context import CryptContext
-from bson import ObjectId
+import uuid
+
 from app.schemas.user import UserCreate, UserUpdate
-from app.models.user import UserModel
+from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserService:
-    def __init__(self, database: AsyncIOMotorDatabase):
-        self.db = database
-        self.collection = database.users
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -27,73 +28,92 @@ class UserService:
             password = password_bytes[:72].decode('utf-8', errors='ignore')
         return pwd_context.hash(password)
 
-    async def get_user_by_id(self, user_id: str) -> Optional[UserModel]:
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
         """Get a user by ID"""
-        user_doc = await self.collection.find_one({"_id": ObjectId(user_id)})
-        if user_doc:
-            user_doc["_id"] = str(user_doc["_id"])
-            return UserModel(**user_doc)
-        return None
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            return None
 
-    async def get_user_by_email(self, email: str) -> Optional[UserModel]:
+        result = await self.db.execute(select(User).where(User.id == user_uuid))
+        return result.scalar_one_or_none()
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
         """Get a user by email"""
-        user_doc = await self.collection.find_one({"email": email})
-        if user_doc:
-            user_doc["_id"] = str(user_doc["_id"])
-            return UserModel(**user_doc)
-        return None
+        result = await self.db.execute(select(User).where(User.email == email))
+        return result.scalar_one_or_none()
 
-    async def get_user_by_username(self, username: str) -> Optional[UserModel]:
+    async def get_user_by_username(self, username: str) -> Optional[User]:
         """Get a user by username"""
-        user_doc = await self.collection.find_one({"username": username})
-        if user_doc:
-            user_doc["_id"] = str(user_doc["_id"])
-            return UserModel(**user_doc)
-        return None
+        result = await self.db.execute(select(User).where(User.username == username))
+        return result.scalar_one_or_none()
 
-    async def get_users(self, skip: int = 0, limit: int = 100) -> List[UserModel]:
+    async def get_users(self, skip: int = 0, limit: int = 100) -> List[User]:
         """Get a list of users"""
-        cursor = self.collection.find().skip(skip).limit(limit)
-        users = []
-        async for user_doc in cursor:
-            user_doc["_id"] = str(user_doc["_id"])
-            users.append(UserModel(**user_doc))
-        return users
+        result = await self.db.execute(select(User).offset(skip).limit(limit))
+        return list(result.scalars().all())
 
-    async def create_user(self, user: UserCreate) -> UserModel:
+    async def create_user(self, user: UserCreate) -> User:
         """Create a new user"""
         user_dict = user.model_dump()
-        user_dict["password"] = self.get_password_hash(user_dict.pop("password"))
-        user_dict["createdAt"] = datetime.utcnow()
-        user_dict["updatedAt"] = datetime.utcnow()
+        hashed_password = self.get_password_hash(user_dict.pop("password"))
 
-        result = await self.collection.insert_one(user_dict)
-        user_dict["_id"] = str(result.inserted_id)
-
-        return UserModel(**user_dict)
-
-    async def update_user(self, user_id: str, user: UserUpdate) -> Optional[UserModel]:
-        """Update a user"""
-        update_data = {k: v for k, v in user.model_dump().items() if v is not None}
-
-        if "password" in update_data:
-            update_data["password"] = self.get_password_hash(update_data["password"])
-
-        update_data["updatedAt"] = datetime.utcnow()
-
-        await self.collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": update_data}
+        db_user = User(
+            username=user_dict["username"],
+            email=user_dict["email"],
+            password=hashed_password,
+            user_type=user_dict.get("user_type", "user"),
+            is_active=user_dict.get("is_active", True),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
-        return await self.get_user_by_id(user_id)
+        self.db.add(db_user)
+        await self.db.flush()
+
+        return db_user
+
+    async def update_user(self, user_id: str, user: UserUpdate) -> Optional[User]:
+        """Update a user"""
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            return None
+
+        db_user = await self.get_user_by_id(user_id)
+        if not db_user:
+            return None
+
+        update_data = user.model_dump(exclude_unset=True)
+
+        for field, value in update_data.items():
+            if field == "password":
+                setattr(db_user, field, self.get_password_hash(value))
+            else:
+                setattr(db_user, field, value)
+
+        db_user.updated_at = datetime.utcnow()
+        await self.db.flush()
+
+        return db_user
 
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user"""
-        result = await self.collection.delete_one({"_id": ObjectId(user_id)})
-        return result.deleted_count > 0
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            return False
 
-    async def authenticate_user(self, username: str, password: str) -> Optional[UserModel]:
+        db_user = await self.get_user_by_id(user_id)
+        if not db_user:
+            return False
+
+        await self.db.delete(db_user)
+        await self.db.flush()
+
+        return True
+
+    async def authenticate_user(self, username: str, password: str) -> Optional[User]:
         """Authenticate a user"""
         user = await self.get_user_by_username(username)
         if not user:
@@ -103,6 +123,6 @@ class UserService:
         return user
 
 # Dependency to get user service
-def get_user_service(database: AsyncIOMotorDatabase) -> UserService:
+def get_user_service(db: AsyncSession) -> UserService:
     """Get user service instance"""
-    return UserService(database)
+    return UserService(db)

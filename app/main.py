@@ -2,17 +2,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
 from app.api.v1.router import api_router
-from app.core.database import db
+from app.core.database import init_db, close_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler"""
     # Startup
-    db.connect()
+    await init_db()
     yield
     # Shutdown
-    db.close()
+    await close_db()
 
 
 app = FastAPI(

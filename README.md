@@ -3,6 +3,7 @@
 ## Setup
 
 1. Create a virtual environment:
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # Linux/Mac
@@ -10,6 +11,7 @@
    ```
 
 2. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -19,63 +21,20 @@
    uvicorn app.main:app --reload
    ```
 
-## Database Setup
+## 🎯 快速测试
 
-### MongoDB
+1. 启动服务器：
+   source venv/bin/activate
+   uvicorn app.main:app --reload
 
-Make sure MongoDB is running:
-```bash
-# Windows: Check if MongoDB service is running
-# Or start manually: mongod
-```
+2. 打开浏览器访问：
+    - Swagger UI: http://localhost:8000/docs
+    - ReDoc: http://localhost:8000/redoc
 
-### Initialize Users
+### 📝 Swagger 功能
 
-Run the initialization script to create default users:
-```bash
-# Initialize with default users
-python scripts/init_users.py
-
-# Create a new user
-python scripts/init_users.py create <username> <email> <password> [type]
-```
-
-Examples:
-```bash
-# Create admin user
-python scripts/init_users.py create admin admin@test.com admin123 admin
-
-# Create regular user
-python scripts/init_users.py create testuser test@example.com 123456 user
-```
-
-## Testing
-
-Run tests with pytest:
-```bash
-pytest
-```
-
-## VS Code Setup
-
-### Enable Go to Definition (Ctrl+Click)
-
-If Ctrl+Click is not working to jump to definitions:
-
-1. **Install Python Extension**
-   - Press `Ctrl+Shift+X` to open Extensions
-   - Search for "Python"
-   - Install the official Python extension by Microsoft
-
-2. **Select Python Interpreter**
-   - Press `Ctrl+Shift+P`
-   - Type and select: `Python: Select Interpreter`
-   - Choose: `./venv/Scripts/python.exe`
-
-3. **Wait for Pylance to Index**
-   - Look for "⚡Pylance: Ready" in the bottom right corner
-   - Pylance needs to index your codebase first
-
-4. **Reload Window (if needed)**
-   - Press `Ctrl+Shift+P`
-   - Type: `Developer: Reload Window`
+- 📖 查看所有 API 端点
+- 🧪 直接测试 API 接口
+- 📋 查看请求/响应模型
+- 🔐 配置认证 (如果有)
+- 📊 查看详细的参数说明

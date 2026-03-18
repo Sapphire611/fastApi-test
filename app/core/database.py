@@ -1,27 +1,44 @@
-from motor.motor_asyncio import AsyncIOMotorClient
-from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+from typing import AsyncGenerator
 from app.core.config import settings
 
-class Database:
-    client: Optional[AsyncIOMotorClient] = None
+# Create async engine
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=True,  # Set to False in production
+    future=True
+)
 
-    def connect(self):
-        """Connect to MongoDB"""
-        self.client = AsyncIOMotorClient(settings.MONGODB_URL)
-        print("Connected to MongoDB")
+# Create async session factory
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False
+)
 
-    def close(self):
-        """Close MongoDB connection"""
-        if self.client:
-            self.client.close()
-            print("Closed MongoDB connection")
+# Base class for models
+Base = declarative_base()
 
-    def get_database(self):
-        """Get database instance"""
-        return self.client[settings.DATABASE_NAME]
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency to get database session"""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
-db = Database()
+async def init_db() -> None:
+    """Initialize database tables"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-def get_database():
-    """Dependency to get database"""
-    return db.get_database()
+async def close_db() -> None:
+    """Close database connection"""
+    await engine.dispose()

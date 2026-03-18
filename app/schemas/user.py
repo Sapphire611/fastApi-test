@@ -1,13 +1,14 @@
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_serializer
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 class UserBase(BaseModel):
     """Base user schema"""
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
-    userType: str = "user"
-    isActive: bool = True
+    user_type: str = "user"
+    is_active: bool = True
 
 class UserCreate(UserBase):
     """Schema for creating a user"""
@@ -17,30 +18,38 @@ class UserUpdate(BaseModel):
     """Schema for updating a user"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
-    userType: Optional[str] = None
-    isActive: Optional[bool] = None
+    user_type: Optional[str] = None
+    is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=6)
 
 class UserInDB(UserBase):
     """Schema for user in database (includes password)"""
-    id: str = Field(..., alias="_id")
+    id: UUID
     password: str
-    createdAt: datetime
-    updatedAt: datetime
+    created_at: datetime
+    updated_at: datetime
 
-    model_config = ConfigDict(populate_by_name=True)
+    @field_serializer('id')
+    def serialize_id(self, id: UUID) -> str:
+        return str(id)
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UserResponse(BaseModel):
     """Schema for user response (excludes password)"""
-    id: str = Field(..., alias="_id")
+    id: UUID
     username: str
     email: EmailStr
-    userType: str
-    isActive: bool
-    createdAt: datetime
-    updatedAt: datetime
+    user_type: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
-    model_config = ConfigDict(populate_by_name=True)
+    @field_serializer('id')
+    def serialize_id(self, id: UUID) -> str:
+        return str(id)
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UserLogin(BaseModel):
     """Schema for user login"""

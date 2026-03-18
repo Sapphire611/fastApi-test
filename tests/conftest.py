@@ -1,74 +1,58 @@
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.main import app
-from app.core.database import db
+from app.core import database
+
+# Use SQLite in-memory database for testing to avoid connection pool issues
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+test_engine = create_async_engine(
+    TEST_DATABASE_URL,
+    echo=False,
+    future=True
+)
+
+TestSessionLocal = async_sessionmaker(
+    test_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False
+)
 
 
-@pytest.fixture(autouse=True)
-def setup_database():
-    """Setup database connection for each test"""
-    # Connect to MongoDB before each test
-    db.connect()
+@pytest.fixture(scope="session")
+async def setup_test_database():
+    """Setup test database tables"""
+    async with test_engine.begin() as conn:
+        await conn.run_sync(database.Base.metadata.create_all)
     yield
-    # Cleanup after each test
-    db.close()
+    # Clean up at session end
+    async with test_engine.begin() as conn:
+        await conn.run_sync(database.Base.metadata.drop_all)
+    await test_engine.dispose()
 
 
-@pytest.fixture
-def client():
-    """Create a test client"""
-    return TestClient(app)
+@pytest.fixture(scope="function")
+async def client(setup_test_database):
+    """Create an async test client with proper cleanup"""
+    # Override the database dependency
+    async def override_get_db():
+        async with TestSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[database.get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def clean_users(client):
-    """Clean up users after test"""
-    yield
-    # Get all users and delete them
-    response = client.get("/api/v1/users/")
-    if response.status_code == 200:
-        users = response.json()
-        for user in users:
-            client.delete(f"/api/v1/users/{user['_id']}")
-
-
-@pytest.fixture
-def test_user_data():
-    """Test user data"""
-    return {
-        "username": "testuser",
-        "email": "test@example.com",
-        "password": "123456",  # Short password to avoid bcrypt 72 byte limit
-        "userType": "user",
-        "isActive": True
-    }
-
-
-@pytest.fixture
-def test_user(client, test_user_data):
-    """Create a test user and return it"""
-    response = client.post("/api/v1/users/register", json=test_user_data)
-    if response.status_code == 201:
-        return response.json()
-    return None
-
-
-@pytest.fixture
-def multiple_test_users(client):
-    """Create multiple test users"""
-    users_data = [
-        {
-            "username": f"user{i}",
-            "email": f"user{i}@example.com",
-            "password": "test123",
-            "userType": "user",
-            "isActive": True
-        }
-        for i in range(1, 4)
-    ]
-    created_users = []
-    for user_data in users_data:
-        response = client.post("/api/v1/users/register", json=user_data)
-        if response.status_code == 201:
-            created_users.append(response.json())
-    return created_users

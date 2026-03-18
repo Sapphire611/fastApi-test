@@ -8,4 +8,9 @@ install:
 	pip install -r requirements.txt
 
 activate:
-	./venv/Scripts/activate
+	@echo "Run this command to activate virtual environment:"
+	@echo "source venv/bin/activate"
+
+activate_win:
+	@echo "Run this command to activate virtual environment:"
+	@echo "venv/Scripts/activate"
