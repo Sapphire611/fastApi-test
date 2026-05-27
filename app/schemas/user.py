@@ -1,66 +1,60 @@
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_serializer
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
-from uuid import UUID
 
-class UserBase(BaseModel):
-    """Base user schema"""
-    username: str = Field(..., min_length=3, max_length=50)
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=20)
     email: EmailStr
-    user_type: str = "user"
-    is_active: bool = True
+    password: str = Field(min_length=6)
+    user_type: str = Field(default="user", pattern=r"^(admin|user)$")
+    profile_name: Optional[str] = None
+    profile_phone: Optional[str] = None
+    profile_avatar: Optional[str] = None
 
-class UserCreate(UserBase):
-    """Schema for creating a user"""
-    password: str = Field(..., min_length=6)
 
 class UserUpdate(BaseModel):
-    """Schema for updating a user"""
-    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    username: Optional[str] = Field(None, min_length=3, max_length=20)
     email: Optional[EmailStr] = None
-    user_type: Optional[str] = None
-    is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=6)
+    user_type: Optional[str] = Field(None, pattern=r"^(admin|user)$")
+    profile_name: Optional[str] = None
+    profile_phone: Optional[str] = None
+    profile_avatar: Optional[str] = None
+    is_active: Optional[bool] = None
 
-class UserInDB(UserBase):
-    """Schema for user in database (includes password)"""
-    id: UUID
-    password: str
-    created_at: datetime
-    updated_at: datetime
-
-    @field_serializer('id')
-    def serialize_id(self, id: UUID) -> str:
-        return str(id)
-
-    model_config = ConfigDict(from_attributes=True)
 
 class UserResponse(BaseModel):
-    """Schema for user response (excludes password)"""
-    id: UUID
+    id: str
     username: str
-    email: EmailStr
+    email: str
     user_type: str
+    profile_name: Optional[str] = None
+    profile_phone: Optional[str] = None
+    profile_avatar: Optional[str] = None
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    @field_serializer('id')
-    def serialize_id(self, id: UUID) -> str:
-        return str(id)
+    model_config = {"from_attributes": True}
 
-    model_config = ConfigDict(from_attributes=True)
 
 class UserLogin(BaseModel):
-    """Schema for user login"""
     username: str
     password: str
 
+
+class MigratePassword(BaseModel):
+    username: str
+    plain_password: str = Field(min_length=1)
+
+
 class Token(BaseModel):
-    """Schema for token response"""
     access_token: str
     token_type: str = "bearer"
 
-class TokenData(BaseModel):
-    """Schema for token data"""
-    username: Optional[str] = None
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse

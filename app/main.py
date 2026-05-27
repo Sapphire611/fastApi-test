@@ -8,20 +8,19 @@ from app.core.database import init_db, close_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler"""
-    # Startup
     await init_db()
     yield
-    # Shutdown
     await close_db()
 
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
 
 @app.get("/")
 def root():

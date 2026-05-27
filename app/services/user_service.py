@@ -1,128 +1,167 @@
-from typing import Optional, List
-from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from passlib.context import CryptContext
+import asyncio
+import logging
 import uuid
+from datetime import datetime, timezone
+from typing import Optional, List
+import bcrypt
+from supabase import Client
 
+from app.core.config import settings
 from app.schemas.user import UserCreate, UserUpdate
 from app.models.user import User
+from app.core.crypto import hash_password_sha256, is_sha256_hex
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
+
 
 class UserService:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, supabase: Client):
+        self.supabase = supabase
 
     @staticmethod
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against a hash"""
-        return pwd_context.verify(plain_password, hashed_password)
+    def verify_password(password: str, hashed: str) -> bool:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Hash a password"""
-        # bcrypt has a 72 byte limit, truncate if necessary
-        password_bytes = password.encode('utf-8')
-        if len(password_bytes) > 72:
-            password = password_bytes[:72].decode('utf-8', errors='ignore')
-        return pwd_context.hash(password)
+        pwd = password.encode()
+        if len(pwd) > 72:
+            pwd = pwd[:72]
+        return bcrypt.hashpw(pwd, bcrypt.gensalt()).decode()
+
+    async def _run(self, query):
+        return await asyncio.to_thread(query.execute)
 
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
-        """Get a user by ID"""
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except ValueError:
-            return None
-
-        result = await self.db.execute(select(User).where(User.id == user_uuid))
-        return result.scalar_one_or_none()
+        result = await self._run(
+            self.supabase.table("users").select("*").eq("id", user_id)
+        )
+        return User(result.data[0]) if result.data else None
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get a user by email"""
-        result = await self.db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+        result = await self._run(
+            self.supabase.table("users").select("*").eq("email", email)
+        )
+        return User(result.data[0]) if result.data else None
 
     async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get a user by username"""
-        result = await self.db.execute(select(User).where(User.username == username))
-        return result.scalar_one_or_none()
+        result = await self._run(
+            self.supabase.table("users").select("*").eq("username", username)
+        )
+        return User(result.data[0]) if result.data else None
 
     async def get_users(self, skip: int = 0, limit: int = 100) -> List[User]:
-        """Get a list of users"""
-        result = await self.db.execute(select(User).offset(skip).limit(limit))
-        return list(result.scalars().all())
+        result = await self._run(
+            self.supabase.table("users")
+            .select("*")
+            .range(skip, skip + limit - 1)
+            .order("created_at", desc=True)
+        )
+        return [User(row) for row in (result.data or [])]
 
     async def create_user(self, user: UserCreate) -> User:
-        """Create a new user"""
         user_dict = user.model_dump()
-        hashed_password = self.get_password_hash(user_dict.pop("password"))
+        raw_password = user_dict.pop("password")
 
-        db_user = User(
-            username=user_dict["username"],
-            email=user_dict["email"],
-            password=hashed_password,
-            user_type=user_dict.get("user_type", "user"),
-            is_active=user_dict.get("is_active", True),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
+        # Double hash: SHA-256 (frontend pattern) → bcrypt (storage)
+        sha256_hex = hash_password_sha256(raw_password)
+        hashed_password = self.get_password_hash(sha256_hex)
 
-        self.db.add(db_user)
-        await self.db.flush()
+        now = datetime.now(timezone.utc).isoformat()
+        row = {
+            **user_dict,
+            "id": str(uuid.uuid4()),
+            "password": hashed_password,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        }
 
-        return db_user
+        result = await self._run(self.supabase.table("users").insert(row))
+        return User(result.data[0])
 
     async def update_user(self, user_id: str, user: UserUpdate) -> Optional[User]:
-        """Update a user"""
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except ValueError:
-            return None
-
         db_user = await self.get_user_by_id(user_id)
         if not db_user:
             return None
 
         update_data = user.model_dump(exclude_unset=True)
 
-        for field, value in update_data.items():
-            if field == "password":
-                setattr(db_user, field, self.get_password_hash(value))
-            else:
-                setattr(db_user, field, value)
+        if "password" in update_data:
+            sha256_hex = hash_password_sha256(update_data["password"])
+            update_data["password"] = self.get_password_hash(sha256_hex)
 
-        db_user.updated_at = datetime.utcnow()
-        await self.db.flush()
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        return db_user
+        result = await self._run(
+            self.supabase.table("users").update(update_data).eq("id", user_id)
+        )
+        return User(result.data[0]) if result.data else None
 
     async def delete_user(self, user_id: str) -> bool:
-        """Delete a user"""
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except ValueError:
-            return False
-
         db_user = await self.get_user_by_id(user_id)
         if not db_user:
             return False
 
-        await self.db.delete(db_user)
-        await self.db.flush()
-
+        await self._run(self.supabase.table("users").delete().eq("id", user_id))
         return True
 
-    async def authenticate_user(self, username: str, password: str) -> Optional[User]:
-        """Authenticate a user"""
+    async def authenticate_user(self, login: str, password: str) -> tuple[Optional[User], str]:
+        # Support both email and username login
+        if "@" in login:
+            user = await self.get_user_by_email(login)
+        else:
+            user = await self.get_user_by_username(login)
+        if not user:
+            return None, f"User not found: {login}"
+
+        stored = user.password or ""
+        is_sha = is_sha256_hex(password)
+        sha256_if_plain = "" if is_sha else hash_password_sha256(password)
+
+        # 1) New format: frontend sends SHA-256 hex, stored = bcrypt(SHA256)
+        if self.verify_password(password, stored):
+            return user, "ok (new format)"
+
+        # 2) Old frontend (sends plain text): SHA-256 it, then bcrypt compare
+        if not is_sha:
+            if self.verify_password(sha256_if_plain, stored):
+                new_hash = self.get_password_hash(sha256_if_plain)
+                await self._run(
+                    self.supabase.table("users")
+                    .update({"password": new_hash})
+                    .eq("id", user.id)
+                )
+                return user, "ok (auto-upgraded)"
+
+        # Diagnostic info
+        return None, (
+            f"Password mismatch. "
+            f"input_len={len(password)} is_sha256={is_sha} "
+            f"stored_pfx={stored[:7]} salt_set={bool(settings.PASSWORD_SALT)} "
+            f"stored_is_bcrypt={stored.startswith('$2')}"
+            + (f" sha256_of_input={sha256_if_plain[:16]}..." if sha256_if_plain else "")
+        )
+
+    async def migrate_password(self, username: str, plain_password: str) -> bool:
+        """Upgrade a user from old format bcrypt(plain) to bcrypt(SHA256(plain+salt))"""
         user = await self.get_user_by_username(username)
         if not user:
-            return None
-        if not self.verify_password(password, user.password):
-            return None
-        return user
+            return False
 
-# Dependency to get user service
-def get_user_service(db: AsyncSession) -> UserService:
-    """Get user service instance"""
-    return UserService(db)
+        stored = user.password or ""
+
+        # Verify the plain password matches old-format stored bcrypt
+        if not self.verify_password(plain_password, stored):
+            logger.warning("Migration failed: plain password does not match stored hash for %s", username)
+            return False
+
+        sha256_hex = hash_password_sha256(plain_password)
+        new_hash = self.get_password_hash(sha256_hex)
+        await self._run(
+            self.supabase.table("users")
+            .update({"password": new_hash})
+            .eq("id", user.id)
+        )
+        logger.info("Password migrated to SHA-256+bcrypt for user: %s", username)
+        return True

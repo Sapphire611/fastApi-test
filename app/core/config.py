@@ -5,37 +5,32 @@ logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
+    DEBUG: bool = False
     PROJECT_NAME: str = "FastAPI Project"
     API_V1_STR: str = "/api/v1"
 
-    # PostgreSQL
-    POSTGRES_SERVER: str = "localhost"
-    POSTGRES_USER: str = "root"
-    POSTGRES_PASSWORD: str = "123456"
-    POSTGRES_DB: str = "postgres"
-    POSTGRES_PORT: str = "5432"
+    # Supabase
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""  # service_role key for server-side operations
+    SUPABASE_JWT_SECRET: str = ""
+
+    # Password hashing (must match frontend NEXT_PUBLIC_PASSWORD_SALT)
+    PASSWORD_SALT: str = "infp-cms-fixed-salt-2024"
 
     # Security
     SECRET_KEY: str = "your-secret-key-change-this"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    @property
-    def DATABASE_URL(self) -> str:
-        """Construct asyncpg database URL"""
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True
     )
 
+
 settings = Settings()
 
 logger.info(
-    "Database target: postgresql+asyncpg://%s:***@%s:%s/%s",
-    settings.POSTGRES_USER,
-    settings.POSTGRES_SERVER,
-    settings.POSTGRES_PORT,
-    settings.POSTGRES_DB,
+    "Supabase target: %s",
+    settings.SUPABASE_URL or "(not configured)",
 )
