@@ -18,9 +18,6 @@ make install       # 安装依赖
 make init-db       # 初始化数据库
 make start         # 启动开发服务器
 
-# 运行测试
-make test
-
 # 查看如何激活虚拟环境
 make activate
 ```
@@ -65,9 +62,6 @@ make install
 make init-db
 make start
 
-# 运行测试
-make test
-
 # 查看激活命令
 make activate
 ```
@@ -105,7 +99,6 @@ uvicorn app.main:app --reload
 | `make install` | 安装项目依赖 |
 | `make activate` | 显示激活虚拟环境的命令 |
 | `make init-db` | 初始化数据库表 |
-| `make test` | 运行测试 |
 | `make start` | 启动开发服务器 |
 | `make clean` | 清理虚拟环境 |
 | `make all` | 完整项目设置 |
@@ -123,18 +116,11 @@ uvicorn app.main:app --reload
 ```bash
 # 创建开发数据库
 createdb -U postgres postgres
-
-# 创建测试数据库
-createdb -U postgres fastapi_test_db
 ```
-
 #### Windows
 ```bash
 # 创建开发数据库
 createdb -U postgres postgres
-
-# 创建测试数据库
-createdb -U postgres fastapi_test_db
 ```
 
 ### 配置环境变量
@@ -145,16 +131,6 @@ cp .env.example .env
 ```
 
 根据需要编辑 `.env` 文件中的数据库配置。
-
-## 🧪 运行测试
-
-```bash
-# 激活虚拟环境后
-pytest tests/ -v
-
-# 或使用 Makefile
-make test
-```
 
 ## 🛠️ 开发工作流
 

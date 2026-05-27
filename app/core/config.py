@@ -1,4 +1,8 @@
+import logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI Project"
@@ -6,8 +10,8 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     POSTGRES_SERVER: str = "localhost"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_USER: str = "root"
+    POSTGRES_PASSWORD: str = "123456"
     POSTGRES_DB: str = "postgres"
     POSTGRES_PORT: str = "5432"
 
@@ -27,3 +31,11 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+logger.info(
+    "Database target: postgresql+asyncpg://%s:***@%s:%s/%s",
+    settings.POSTGRES_USER,
+    settings.POSTGRES_SERVER,
+    settings.POSTGRES_PORT,
+    settings.POSTGRES_DB,
+)
